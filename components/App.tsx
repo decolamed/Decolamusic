@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Icon, Modal, Logo, LogoMark, btnAccent, btnPrimary, inputCls } from './Ui';
 import { DataProvider, useData } from './Data';
+import { LocalProvider, MyMusicView } from './Local';
 import { PlayerProvider } from './Player';
 import { Home, Search, Library, PlaylistView, Favorites, History, Profile, View } from './Views';
 
@@ -93,9 +94,10 @@ function Shell({ session }: { session: Session }) {
   useEffect(() => {
     supabase.from('profiles').select('display_name').eq('id', session.user.id).single().then(({ data }) => data?.display_name && setName(data.display_name));
   }, [session.user.id]);
-  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' ? 'library' : view.name;
+  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' || view.name === 'mymusic' ? 'library' : view.name;
   return (
     <DataProvider userId={session.user.id}>
+      <LocalProvider>
       <PlayerProvider>
         <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 flex-col gap-1 p-5 bg-surface-1 border-r border-white/5">
           <div className="mb-6"><Logo /></div>
@@ -112,6 +114,7 @@ function Shell({ session }: { session: Session }) {
           {view.name === 'playlist' && <PlaylistView id={view.id} go={setView} />}
           {view.name === 'favorites' && <Favorites go={setView} />}
           {view.name === 'history' && <History go={setView} />}
+          {view.name === 'mymusic' && <MyMusicView go={setView} />}
           {view.name === 'profile' && <Profile email={session.user.email!} name={name} userId={session.user.id} onName={setName} />}
         </main>
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 glass border-t border-white/5 flex">
@@ -124,6 +127,7 @@ function Shell({ session }: { session: Session }) {
         <AddToPlaylist />
         <TrackMenu />
       </PlayerProvider>
+      </LocalProvider>
     </DataProvider>
   );
 }

@@ -6,7 +6,7 @@ import { useData } from './Data';
 import { usePlayer } from './Player';
 
 export type View =
-  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' }
+  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' | 'mymusic' }
   | { name: 'search'; q?: string }
   | { name: 'playlist'; id: string };
 type Nav = (v: View) => void;
@@ -196,12 +196,14 @@ export function Library({ go }: { go: Nav }) {
       <div className="flex gap-2 mb-4">
         <span className="px-5 py-1.5 rounded-full text-sm font-semibold bg-brand-orange text-black">Playlists</span>
         <button onClick={() => go({ name: 'favorites' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Favoritas</button>
+        <button onClick={() => go({ name: 'mymusic' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Minhas músicas</button>
         <button onClick={() => go({ name: 'history' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Histórico</button>
       </div>
       <Row onClick={() => go({ name: 'favorites' })} title="Favoritas" sub={`${favs.length} músicas`}>
         <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-700 grid place-items-center"><Icon n="heart" fill /></div>
       </Row>
       {playlists.map((p) => <Row key={p.id} onClick={() => go({ name: 'playlist', id: p.id })} cover={p.cover} title={p.name} sub={`${p.count} músicas`} />)}
+      <Row onClick={() => go({ name: 'mymusic' })} title="Minhas músicas" sub="Arquivos do aparelho • tocam em segundo plano"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="music" /></div></Row>
       <Row onClick={() => setOpen(true)} title="Criar playlist"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="plus" /></div></Row>
       {hist.length > 0 && (<>
         <Head title="Histórico" more={() => go({ name: 'history' })} />
