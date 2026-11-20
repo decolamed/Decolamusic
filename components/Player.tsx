@@ -3,6 +3,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { supabase, Track } from '@/lib/supabase';
 import { Icon, Cover, Modal } from './Ui';
 import { useData } from './Data';
+import { useOffline, authHeader } from './Offline';
+import { getFile } from '@/lib/offline';
 
 type PCtx = { current: Track | null; playing: boolean; full: boolean; setFull: (b: boolean) => void; play: (queue: Track[], index: number) => void; toggle: () => void; next: () => void; prev: () => void };
 const C = createContext<PCtx>(null as any);
@@ -11,6 +13,11 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const { userId, favIds, toggleFav, openMenu } = useData();
+  const { local, online, toast } = useOffline();
+  const [eng, setEng] = useState<'yt' | 'au'>('yt');
+  const engine = useRef<'yt' | 'au'>('yt');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objUrl = useRef('');
   const [queue, setQueue] = useState<Track[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -41,33 +48,78 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const goNext = useCallback(() => {
     const { queue: q, index: i, repeat: r } = st.current;
-    if (r === 'one') { player.current?.seekTo(0, true); player.current?.playVideo(); }
+    if (r === 'one') { if (engine.current === 'au' && audioRef.current) { audioRef.current.currentTime = 0; audioRef.current.play(); } else { player.current?.seekTo(0, true); player.current?.playVideo(); } }
     else if (i + 1 < q.length) setIndex(i + 1);
     else if (r === 'all' && q.length) setIndex(0);
     else setPlaying(false);
   }, []);
 
+  const getAudio = () => {
+    if (!audioRef.current) {
+      const a = new Audio();
+      a.preload = 'auto';
+      a.addEventListener('ended', goNext);
+      a.addEventListener('play', () => setPlaying(true));
+      a.addEventListener('pause', () => setPlaying(false));
+      a.addEventListener('error', () => { if (a.src) { toast('Não foi possível reproduzir esta faixa.'); goNext(); } });
+      audioRef.current = a;
+    }
+    return audioRef.current;
+  };
+
   useEffect(() => {
-    if (!apiReady || !current) return;
-    const w = window as any;
-    if (!player.current) {
-      player.current = new w.YT.Player('yt-player', {
-        width: '100%', height: '100%', videoId: current.video_id,
-        playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1 },
-        events: {
-          onReady: (e: any) => e.target.playVideo(),
-          onStateChange: (e: any) => { if (e.data === 1) setPlaying(true); else if (e.data === 2) setPlaying(false); else if (e.data === 0) goNext(); },
-          onError: () => goNext()
+    if (!current) return;
+    let cancelled = false;
+    const key = current.video_id;
+    (async () => {
+      const isJm = key.startsWith('jm:');
+      if (local[key] || isJm) {
+        engine.current = 'au'; setEng('au');
+        player.current?.pauseVideo?.();
+        const a = getAudio();
+        let src = '';
+        if (local[key]) {
+          const rec = await getFile(key).catch(() => undefined);
+          if (rec) { if (objUrl.current) URL.revokeObjectURL(objUrl.current); objUrl.current = URL.createObjectURL(rec.blob); src = objUrl.current; }
         }
-      });
-    } else player.current.loadVideoById(current.video_id);
-    supabase.from('history').insert({ user_id: userId, video_id: current.video_id, title: current.title, channel: current.channel, thumbnail: current.thumbnail }).then(() => {});
-    if ('mediaSession' in navigator) (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({ title: current.title, artist: current.channel, artwork: [{ src: current.thumbnail }] });
+        if (!src && isJm) {
+          if (!navigator.onLine) { toast('Sem internet: faixa indisponível offline.'); goNext(); return; }
+          const j = await fetch('/api/jamendo/stream?id=' + key, { headers: await authHeader() }).then((r) => r.json()).catch(() => ({}));
+          src = j.url || '';
+        }
+        if (cancelled) return;
+        if (!src) { toast('Faixa indisponível.'); goNext(); return; }
+        a.src = src; a.play().catch(() => {});
+      } else {
+        if (!navigator.onLine) { toast('Sem internet: esta música não foi baixada.'); goNext(); return; }
+        if (!apiReady) return;
+        engine.current = 'yt'; setEng('yt');
+        audioRef.current?.pause();
+        const w = window as any;
+        if (!player.current) {
+          player.current = new w.YT.Player('yt-player', {
+            width: '100%', height: '100%', videoId: key,
+            playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1 },
+            events: {
+              onReady: (e: any) => e.target.playVideo(),
+              onStateChange: (e: any) => { if (engine.current !== 'yt') return; if (e.data === 1) setPlaying(true); else if (e.data === 2) setPlaying(false); else if (e.data === 0) goNext(); },
+              onError: () => goNext()
+            }
+          });
+        } else player.current.loadVideoById(key);
+      }
+      if (navigator.onLine) supabase.from('history').insert({ user_id: userId, video_id: key, title: current.title, channel: current.channel, thumbnail: current.thumbnail }).then(() => {});
+      if ('mediaSession' in navigator) (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({ title: current.title, artist: current.channel, artwork: current.thumbnail ? [{ src: current.thumbnail }] : [] });
+    })();
+    return () => { cancelled = true; };
   }, [apiReady, current?.video_id]); // eslint-disable-line
 
   useEffect(() => {
     if (!current) return;
-    const t = setInterval(() => { const p = player.current; if (p && p.getCurrentTime) { setPos(p.getCurrentTime() || 0); setDur(p.getDuration() || 0); } }, 500);
+    const t = setInterval(() => {
+      if (engine.current === 'au') { const a = audioRef.current; if (a) { setPos(a.currentTime || 0); setDur(isFinite(a.duration) ? a.duration : 0); } return; }
+      const p = player.current; if (p && p.getCurrentTime) { setPos(p.getCurrentTime() || 0); setDur(p.getDuration() || 0); }
+    }, 500);
     return () => clearInterval(t);
   }, [!!current]);
 
@@ -80,11 +132,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     return () => { clearInterval(t); window.removeEventListener('resize', upd); };
   }, [full, clip, !!current]);
 
-  const play = (q: Track[], i: number) => { setQueue(q); setIndex(i); };
-  const toggle = () => { const p = player.current; if (!p) return; playing ? p.pauseVideo() : p.playVideo(); };
+  const play = (q: Track[], i: number) => {
+    if (!navigator.onLine) {
+      const ok = (t: Track) => !!local[t.video_id];
+      const playable = q.filter(ok);
+      if (!playable.length) { toast('Nenhuma destas músicas está baixada.'); return; }
+      const skipped = q.length - playable.length;
+      const startAt = ok(q[i]) ? playable.indexOf(q[i]) : 0;
+      if (skipped) toast(`${skipped} música(s) indisponível(is) sem internet`);
+      setQueue(playable); setIndex(startAt); return;
+    }
+    setQueue(q); setIndex(i);
+  };
+  const toggle = () => {
+    if (engine.current === 'au') { const a = audioRef.current; if (a) a.paused ? a.play() : a.pause(); return; }
+    const p = player.current; if (!p) return; playing ? p.pauseVideo() : p.playVideo();
+  };
   const next = () => { if (index + 1 < queue.length) setIndex(index + 1); else if (repeat === 'all') setIndex(0); };
-  const prev = () => { if (pos > 4 && player.current) player.current.seekTo(0, true); else if (index > 0) setIndex(index - 1); };
-  const seek = (v: number) => { player.current?.seekTo(v, true); setPos(v); };
+  const seekTo0 = () => { if (engine.current === 'au' && audioRef.current) audioRef.current.currentTime = 0; else player.current?.seekTo(0, true); };
+  const prev = () => { if (pos > 4) seekTo0(); else if (index > 0) setIndex(index - 1); };
+  const seek = (v: number) => { if (engine.current === 'au' && audioRef.current) audioRef.current.currentTime = v; else player.current?.seekTo(v, true); setPos(v); };
   const toggleShuffle = () => {
     if (!shuffle && current) { const rest = queue.filter((_, i) => i !== index).sort(() => Math.random() - 0.5); setQueue([current, ...rest]); setIndex(0); }
     setShuffle(!shuffle);
@@ -93,15 +160,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     const ms = (navigator as any).mediaSession;
-    ms.setActionHandler('play', () => player.current?.playVideo());
-    ms.setActionHandler('pause', () => player.current?.pauseVideo());
+    ms.setActionHandler('play', () => (engine.current === 'au' ? audioRef.current?.play() : player.current?.playVideo()));
+    ms.setActionHandler('pause', () => (engine.current === 'au' ? audioRef.current?.pause() : player.current?.pauseVideo()));
     ms.setActionHandler('nexttrack', next);
     ms.setActionHandler('previoustrack', prev);
   });
 
   const fav = current ? favIds.has(current.video_id) : false;
   const pct = dur ? (pos / dur) * 100 : 0;
-  const hostFull = full && rect;
+  const hostFull = full && rect && eng === 'yt';
   const hostCls = !current ? 'hidden' : hostFull ? 'fixed z-[70] rounded-xl overflow-hidden bg-black shadow-2xl' : 'fixed z-[45] right-3 bottom-[152px] md:bottom-[96px] w-[200px] h-[113px] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black animate-fadeIn';
   const hostStyle = hostFull ? { top: rect!.top, left: rect!.left, width: rect!.width, height: rect!.height } : undefined;
   const Slider = (
@@ -120,7 +187,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             <button onClick={() => openMenu(current)} className="p-1 text-white/90"><Icon n="dots" /></button>
           </div>
           <div className="mt-4 flex-1 flex flex-col justify-center items-center min-h-0">
-            {clip ? <div ref={slotRef} className="w-full max-w-[720px] aspect-video" /> : <Cover src={current.thumbnail} size="w-[68vw] max-w-[340px]" className="rounded-2xl shadow-[0_20px_60px_rgba(30,107,255,.35)]" />}
+            {clip && eng === 'yt' ? <div ref={slotRef} className="w-full max-w-[720px] aspect-video" /> : <Cover src={current.thumbnail} size="w-[68vw] max-w-[340px]" className="rounded-2xl shadow-[0_20px_60px_rgba(30,107,255,.35)]" />}
           </div>
           <div className="w-full max-w-[720px] mx-auto">
             <div className="flex items-center gap-3 mt-5">
@@ -140,10 +207,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
               <button onClick={() => setShowQueue(true)} className="text-white/80"><Icon n="queue" /></button>
             </div>
             <div className="flex flex-col items-center gap-3 mt-3">
-              {!clip && <div ref={slotRef} className="w-[200px] h-[113px]" />}
-              <button onClick={() => setClip(!clip)} className="w-full border-2 border-brand-orange text-brand-orange rounded-full py-3 font-semibold flex items-center justify-center gap-2 active:scale-[.98] transition">
+              {!clip && eng === 'yt' && <div ref={slotRef} className="w-[200px] h-[113px]" />}
+              {eng === 'yt' && <button onClick={() => setClip(!clip)} className="w-full border-2 border-brand-orange text-brand-orange rounded-full py-3 font-semibold flex items-center justify-center gap-2 active:scale-[.98] transition">
                 <Icon n={clip ? 'music' : 'play'} s={18} fill={!clip} />{clip ? 'Voltar à capa' : 'Assistir ao clipe'}
-              </button>
+              </button>}
             </div>
           </div>
         </div>

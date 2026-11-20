@@ -4,9 +4,10 @@ import { supabase, Track, Playlist } from '@/lib/supabase';
 import { Icon, Cover, Modal, btnPrimary, btnAccent, inputCls } from './Ui';
 import { useData } from './Data';
 import { usePlayer } from './Player';
+import { useOffline } from './Offline';
 
 export type View =
-  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' }
+  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' | 'downloads' | 'spotify' }
   | { name: 'search'; q?: string }
   | { name: 'playlist'; id: string };
 type Nav = (v: View) => void;
@@ -14,9 +15,11 @@ type Nav = (v: View) => void;
 export function TrackRow({ t, queue, i, extra }: { t: Track; queue: Track[]; i: number; extra?: React.ReactNode }) {
   const { play, current, playing } = usePlayer();
   const { openMenu } = useData();
+  const { local, online } = useOffline();
   const active = current?.video_id === t.video_id;
+  const dl = !!local[t.video_id];
   return (
-    <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition">
+    <div className={`flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition ${!online && !dl ? 'opacity-40' : ''}`}>
       <button onClick={() => play(queue, i)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
         <div className="relative shrink-0">
           <Cover src={t.thumbnail} size="w-14" className="rounded-lg" />
@@ -24,7 +27,7 @@ export function TrackRow({ t, queue, i, extra }: { t: Track; queue: Track[]; i: 
         </div>
         <div className="min-w-0">
           <p className={`truncate font-semibold ${active ? 'text-brand-orange' : ''}`}>{t.title}</p>
-          <p className="truncate text-sm text-white/50">{t.channel}</p>
+          <p className="truncate text-sm text-white/50">{dl && <span className="text-emerald-400">↓ </span>}{t.channel}{!online && !dl ? ' • indisponível offline' : ''}</p>
         </div>
       </button>
       {extra}
@@ -129,6 +132,7 @@ const FILTERS = [
 export function Search({ initial }: { initial?: string }) {
   const [q, setQ] = useState(initial || '');
   const [f, setF] = useState(FILTERS[0]);
+  const [src, setSrc] = useState<'yt' | 'jm'>('yt');
   const [items, setItems] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -136,7 +140,7 @@ export function Search({ initial }: { initial?: string }) {
     if (!term.trim()) return;
     setLoading(true); setErr('');
     const { data } = await supabase.auth.getSession();
-    const r = await fetch('/api/search?q=' + encodeURIComponent(term + flt.s), { headers: { Authorization: `Bearer ${data.session?.access_token}` } });
+    const r = await fetch((src === 'jm' ? '/api/jamendo/search?q=' : '/api/search?q=') + encodeURIComponent(term + (src === 'yt' ? flt.s : '')), { headers: { Authorization: `Bearer ${data.session?.access_token}` } });
     const j = await r.json();
     setLoading(false);
     if (!r.ok) { setErr(j.error || 'Erro na pesquisa'); return; }
@@ -149,12 +153,16 @@ export function Search({ initial }: { initial?: string }) {
         <Icon n="search" s={20} className="text-white/60" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no Decola Music..." className="flex-1 bg-transparent outline-none placeholder:text-white/40" />
       </form>
+      <div className="flex gap-2 mt-4">
+        {([['yt', 'YouTube'], ['jm', 'Catálogo livre']] as const).map(([k, l]) => <button key={k} onClick={() => { setSrc(k); setItems([]); setErr(''); }} className={`px-4 py-1.5 rounded-full text-sm font-semibold border ${src === k ? 'border-brand-orange text-brand-orange' : 'border-white/15 text-white/60'}`}>{l}</button>)}
+      </div>
+      {src === 'jm' && <p className="text-xs text-white/40 mt-2">Música independente com licença aberta (Jamendo): toca com a tela apagada e pode ser baixada quando o artista autoriza.</p>}
       <div className="flex gap-2 my-4 overflow-x-auto no-scrollbar">
-        {FILTERS.map((x) => (
+        {src === 'yt' && FILTERS.map((x) => (
           <button key={x.k} onClick={() => { setF(x); if (q.trim()) run(q, x); }} className={`px-5 py-1.5 rounded-full text-sm font-semibold shrink-0 ${f.k === x.k ? 'bg-brand-orange text-black' : 'bg-surface-3 text-white/80'}`}>{x.l}</button>
         ))}
       </div>
-      {!items.length && !loading && !err && (
+      {!items.length && !loading && !err && src === 'yt' && (
         <div className="grid grid-cols-2 gap-3">
           {TILES.map((t) => <button key={t.n} onClick={() => { setQ(t.q); run(t.q); }} className={`rounded-xl p-4 h-20 text-left font-bold bg-gradient-to-br ${t.g}`}>{t.n}</button>)}
         </div>
@@ -196,12 +204,15 @@ export function Library({ go }: { go: Nav }) {
       <div className="flex gap-2 mb-4">
         <span className="px-5 py-1.5 rounded-full text-sm font-semibold bg-brand-orange text-black">Playlists</span>
         <button onClick={() => go({ name: 'favorites' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Favoritas</button>
+        <button onClick={() => go({ name: 'downloads' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Downloads</button>
         <button onClick={() => go({ name: 'history' })} className="px-5 py-1.5 rounded-full text-sm bg-surface-3 text-white/80">Histórico</button>
       </div>
+      <button onClick={() => go({ name: 'spotify' })} className="w-full mb-4 rounded-xl p-3 bg-surface-2 text-left flex items-center gap-3 active:scale-[.99]"><span className="w-9 h-9 rounded-full bg-[#1db954] grid place-items-center text-black font-bold">S</span><span className="flex-1"><span className="block font-semibold">Importar do Spotify</span><span className="block text-xs text-white/50">Conectar Spotify e trazer suas playlists</span></span><Icon n="chev" s={18} /></button>
       <Row onClick={() => go({ name: 'favorites' })} title="Favoritas" sub={`${favs.length} músicas`}>
         <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-700 grid place-items-center"><Icon n="heart" fill /></div>
       </Row>
       {playlists.map((p) => <Row key={p.id} onClick={() => go({ name: 'playlist', id: p.id })} cover={p.cover} title={p.name} sub={`${p.count} músicas`} />)}
+      <Row onClick={() => go({ name: 'downloads' })} title="Downloads" sub="Músicas offline neste dispositivo"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="down" /></div></Row>
       <Row onClick={() => setOpen(true)} title="Criar playlist"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="plus" /></div></Row>
       {hist.length > 0 && (<>
         <Head title="Histórico" more={() => go({ name: 'history' })} />
@@ -226,8 +237,9 @@ export function PlaylistView({ id, go }: { id: string; go: Nav }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const load = useCallback(async () => {
-    const { data } = await supabase.from('playlist_tracks').select('id,video_id,title,channel,thumbnail').eq('playlist_id', id).order('position');
-    setTracks((data as any) || []);
+    const { data, error } = await supabase.from('playlist_tracks').select('id,video_id,title,channel,thumbnail').eq('playlist_id', id).order('position');
+    if (!error && data) { setTracks(data as any); try { localStorage.setItem('dm-pt-' + id, JSON.stringify(data)); } catch {} }
+    else { try { setTracks(JSON.parse(localStorage.getItem('dm-pt-' + id) || '[]')); } catch {} }
   }, [id]);
   useEffect(() => { load(); }, [load, playlists]);
   useEffect(() => { if (pl) { setName(pl.name); setDesc(pl.description || ''); } }, [pl?.name, pl?.description]);
@@ -246,7 +258,7 @@ export function PlaylistView({ id, go }: { id: string; go: Nav }) {
             <div className="space-y-2"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /><input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Descrição" className={inputCls} /><button onClick={save} className={btnPrimary}>Salvar</button></div>
           ) : (<>
             <h1 className="text-3xl font-extrabold truncate">{pl.name}</h1>
-            <p className="text-white/50 text-sm">{tracks.length} músicas • por você</p>
+            <p className="text-white/50 text-sm">{tracks.length} músicas • {pl.source === 'spotify' ? 'importada do Spotify' : 'por você'}</p>
             {pl.description && <p className="text-white/60 text-sm mt-1">{pl.description}</p>}
           </>)}
         </div>
@@ -297,7 +309,7 @@ export function History({ go }: { go: Nav }) {
   );
 }
 
-export function Profile({ email, name, userId, onName }: { email: string; name: string; userId: string; onName: (n: string) => void }) {
+export function Profile({ email, name, userId, onName, go }: { email: string; name: string; userId: string; onName: (n: string) => void; go: Nav }) {
   const [editing, setEditing] = useState(false);
   const [n, setN] = useState(name);
   const [about, setAbout] = useState(false);
@@ -312,6 +324,8 @@ export function Profile({ email, name, userId, onName }: { email: string; name: 
         </div>
         {!editing && <button onClick={() => { setN(name); setEditing(true); }} className="text-white/70"><Icon n="edit" /></button>}
       </div>
+      <button onClick={() => go({ name: 'spotify' })} className="flex items-center gap-4 w-full py-5 text-left border-b border-white/10"><span className="w-6 h-6 rounded-full bg-[#1db954] grid place-items-center text-black text-xs font-bold">S</span><span className="flex-1">Conectar Spotify</span><Icon n="chev" s={18} className="text-white/50" /></button>
+      <button onClick={() => go({ name: 'downloads' })} className="flex items-center gap-4 w-full py-5 text-left"><Icon n="down" className="text-white/70" /><span className="flex-1">Downloads</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => setAbout(true)} className="flex items-center gap-4 w-full py-5 text-left"><Icon n="info" className="text-white/70" /><span className="flex-1">Sobre o Decola Music</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => supabase.auth.signOut()} className="w-full py-3.5 rounded-full bg-surface-3 font-semibold mt-2">Sair</button>
       {about && <Modal title="Decola Music" onClose={() => setAbout(false)}><p className="text-white/70 text-sm">Seu player pessoal: músicas do YouTube, playlists e favoritos salvos na sua conta.</p></Modal>}

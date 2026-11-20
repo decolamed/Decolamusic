@@ -31,14 +31,20 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       supabase.from('playlist_tracks').select('playlist_id,thumbnail,position').order('position'),
       supabase.from('favorites').select('video_id,title,channel,thumbnail').order('created_at', { ascending: false })
     ]);
+    if (pl.error || fv.error) {
+      try { const c = JSON.parse(localStorage.getItem('dm-cache') || '{}'); setPlaylists(c.playlists || []); setFavs(c.favs || []); } catch {}
+      return;
+    }
     const cover: Record<string, string> = {};
     const count: Record<string, number> = {};
     (pt.data || []).forEach((r: any) => {
       if (!cover[r.playlist_id]) cover[r.playlist_id] = r.thumbnail;
       count[r.playlist_id] = (count[r.playlist_id] || 0) + 1;
     });
-    setPlaylists(((pl.data as Playlist[]) || []).map((p) => ({ ...p, cover: cover[p.id], count: count[p.id] || 0 })));
+    const plist = ((pl.data as Playlist[]) || []).map((p) => ({ ...p, cover: cover[p.id], count: count[p.id] || 0 }));
+    setPlaylists(plist);
     setFavs((fv.data as Track[]) || []);
+    try { localStorage.setItem('dm-cache', JSON.stringify({ playlists: plist, favs: fv.data })); } catch {}
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
