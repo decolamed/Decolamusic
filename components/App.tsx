@@ -31,7 +31,10 @@ function Auth() {
     } else {
       const { data, error } = await supabase.auth.signUp({ email, password: pass, options: { data: { display_name: name }, emailRedirectTo: window.location.origin } });
       if (error) setMsg(error.message);
-      else if (!data.session) setMsg('Conta criada! Verifique seu e-mail para confirmar o cadastro.');
+      else if (!data.session) {
+        const r = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (r.error) setMsg('Conta criada! Se pedir confirmação, desative "Confirm email" no Supabase (Authentication → Sign In / Providers → Email).');
+      }
     }
     setBusy(false);
   };
