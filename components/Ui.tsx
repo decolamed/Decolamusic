@@ -19,12 +19,19 @@ const P: Record<string, string> = {
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   shuffle: 'M3 7h4l10 10h4M3 17h4l3-3M14 10l3-3h4M18 4l3 3-3 3M18 14l3 3-3 3',
   x: 'M6 6l12 12M18 6L6 18',
+  bell: 'M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0',
+  dots: 'M12 5h.01M12 12h.01M12 19h.01',
+  repeat: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
+  back: 'M15 5l-7 7 7 7',
+  chev: 'M9 5l7 7-7 7',
+  queue: 'M4 6h16M4 12h16M4 18h10',
+  info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.01',
   video: 'M3 6h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H3zM17 10l4-2v8l-4-2'
 };
 
 export function Icon({ n, s = 22, fill = false, className = '' }: { n: string; s?: number; fill?: boolean; className?: string }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={n === 'dots' ? 3.2 : 2} strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d={P[n]} />
     </svg>
   );
@@ -50,6 +57,28 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
           <button onClick={onClose} className="text-white/60 hover:text-white"><Icon n="x" /></button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+export function LogoMark({ size = 40 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffa24a" /><stop offset="1" stopColor="#ff6a00" /></linearGradient></defs>
+      <path d="M26 14l30-7-6 15-24 7z" fill="url(#lg)" />
+      <path d="M26 24l22-5-3 8-19 5z" fill="#ff7a1a" opacity=".7" />
+      <path d="M25 16v30" stroke="#1e6bff" strokeWidth="6" strokeLinecap="round" />
+      <ellipse cx="17" cy="47" rx="9" ry="7" fill="#1e6bff" transform="rotate(-20 17 47)" />
+    </svg>
+  );
+}
+export function Logo({ big = false }: { big?: boolean }) {
+  return (
+    <div className={`flex ${big ? 'flex-col items-center gap-2' : 'items-center gap-2'}`}>
+      <LogoMark size={big ? 84 : 32} />
+      <div className={`font-extrabold leading-none ${big ? 'text-5xl text-center' : 'text-xl'}`}>
+        Decola{big ? <br /> : ' '}<span className="text-brand-orange">Music</span>
       </div>
     </div>
   );

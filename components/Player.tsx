@@ -1,36 +1,32 @@
 'use client';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { supabase, Track } from '@/lib/supabase';
-import { Icon, Cover } from './Ui';
+import { Icon, Cover, Modal } from './Ui';
 import { useData } from './Data';
 
-type PCtx = {
-  current: Track | null;
-  playing: boolean;
-  full: boolean;
-  setFull: (b: boolean) => void;
-  play: (queue: Track[], index: number) => void;
-  toggle: () => void;
-  next: () => void;
-  prev: () => void;
-};
+type PCtx = { current: Track | null; playing: boolean; full: boolean; setFull: (b: boolean) => void; play: (queue: Track[], index: number) => void; toggle: () => void; next: () => void; prev: () => void };
 const C = createContext<PCtx>(null as any);
 export const usePlayer = () => useContext(C);
-
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
-  const { userId, favIds, toggleFav, openAdd } = useData();
+  const { userId, favIds, toggleFav, openMenu } = useData();
   const [queue, setQueue] = useState<Track[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [full, setFull] = useState(false);
+  const [clip, setClip] = useState(false);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<'off' | 'all' | 'one'>('off');
+  const [showQueue, setShowQueue] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const player = useRef<any>(null);
-  const stateRef = useRef({ queue, index });
-  stateRef.current = { queue, index };
+  const slotRef = useRef<HTMLDivElement>(null);
+  const st = useRef({ queue, index, repeat });
+  st.current = { queue, index, repeat };
   const current = queue[index] || null;
 
   useEffect(() => {
@@ -44,11 +40,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const goNext = useCallback(() => {
-    const { queue: q, index: i } = stateRef.current;
-    if (i + 1 < q.length) setIndex(i + 1); else setPlaying(false);
+    const { queue: q, index: i, repeat: r } = st.current;
+    if (r === 'one') { player.current?.seekTo(0, true); player.current?.playVideo(); }
+    else if (i + 1 < q.length) setIndex(i + 1);
+    else if (r === 'all' && q.length) setIndex(0);
+    else setPlaying(false);
   }, []);
 
-  // create/load player when track changes
   useEffect(() => {
     if (!apiReady || !current) return;
     const w = window as any;
@@ -58,37 +56,39 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         playerVars: { autoplay: 1, playsinline: 1, rel: 0, modestbranding: 1 },
         events: {
           onReady: (e: any) => e.target.playVideo(),
-          onStateChange: (e: any) => {
-            if (e.data === 1) setPlaying(true);
-            else if (e.data === 2) setPlaying(false);
-            else if (e.data === 0) goNext();
-          },
+          onStateChange: (e: any) => { if (e.data === 1) setPlaying(true); else if (e.data === 2) setPlaying(false); else if (e.data === 0) goNext(); },
           onError: () => goNext()
         }
       });
-    } else {
-      player.current.loadVideoById(current.video_id);
-    }
+    } else player.current.loadVideoById(current.video_id);
     supabase.from('history').insert({ user_id: userId, video_id: current.video_id, title: current.title, channel: current.channel, thumbnail: current.thumbnail }).then(() => {});
-    if ('mediaSession' in navigator) {
-      (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({ title: current.title, artist: current.channel, artwork: [{ src: current.thumbnail }] });
-    }
+    if ('mediaSession' in navigator) (navigator as any).mediaSession.metadata = new (window as any).MediaMetadata({ title: current.title, artist: current.channel, artwork: [{ src: current.thumbnail }] });
   }, [apiReady, current?.video_id]); // eslint-disable-line
 
   useEffect(() => {
     if (!current) return;
-    const t = setInterval(() => {
-      const p = player.current;
-      if (p && p.getCurrentTime) { setPos(p.getCurrentTime() || 0); setDur(p.getDuration() || 0); }
-    }, 500);
+    const t = setInterval(() => { const p = player.current; if (p && p.getCurrentTime) { setPos(p.getCurrentTime() || 0); setDur(p.getDuration() || 0); } }, 500);
     return () => clearInterval(t);
   }, [!!current]);
 
+  useEffect(() => {
+    if (!full || !current) { setRect(null); return; }
+    const upd = () => { const el = slotRef.current; if (el) { const r = el.getBoundingClientRect(); setRect({ top: r.top, left: r.left, width: r.width, height: r.height }); } };
+    upd();
+    const t = setInterval(upd, 200);
+    window.addEventListener('resize', upd);
+    return () => { clearInterval(t); window.removeEventListener('resize', upd); };
+  }, [full, clip, !!current]);
+
   const play = (q: Track[], i: number) => { setQueue(q); setIndex(i); };
   const toggle = () => { const p = player.current; if (!p) return; playing ? p.pauseVideo() : p.playVideo(); };
-  const next = () => { if (index + 1 < queue.length) setIndex(index + 1); };
+  const next = () => { if (index + 1 < queue.length) setIndex(index + 1); else if (repeat === 'all') setIndex(0); };
   const prev = () => { if (pos > 4 && player.current) player.current.seekTo(0, true); else if (index > 0) setIndex(index - 1); };
   const seek = (v: number) => { player.current?.seekTo(v, true); setPos(v); };
+  const toggleShuffle = () => {
+    if (!shuffle && current) { const rest = queue.filter((_, i) => i !== index).sort(() => Math.random() - 0.5); setQueue([current, ...rest]); setIndex(0); }
+    setShuffle(!shuffle);
+  };
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
@@ -100,60 +100,77 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
 
   const fav = current ? favIds.has(current.video_id) : false;
-  const hostCls = !current
-    ? 'hidden'
-    : full
-    ? 'fixed z-[70] top-16 left-1/2 -translate-x-1/2 w-[min(92vw,760px)] aspect-video rounded-xl overflow-hidden shadow-2xl bg-black'
-    : 'fixed z-[45] right-3 bottom-[150px] md:bottom-[92px] w-[200px] h-[113px] rounded-lg overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black animate-fadeIn';
+  const pct = dur ? (pos / dur) * 100 : 0;
+  const hostFull = full && rect;
+  const hostCls = !current ? 'hidden' : hostFull ? 'fixed z-[70] rounded-xl overflow-hidden bg-black shadow-2xl' : 'fixed z-[45] right-3 bottom-[152px] md:bottom-[96px] w-[200px] h-[113px] rounded-xl overflow-hidden shadow-2xl ring-1 ring-white/15 bg-black animate-fadeIn';
+  const hostStyle = hostFull ? { top: rect!.top, left: rect!.left, width: rect!.width, height: rect!.height } : undefined;
+  const Slider = (
+    <input type="range" min={0} max={dur || 1} step={0.5} value={pos} onChange={(e) => seek(+e.target.value)} className="w-full h-1 appearance-none rounded-full bg-white/20" style={{ background: `linear-gradient(to right,#ff7a1a ${pct}%,rgba(255,255,255,.2) ${pct}%)` }} />
+  );
 
   return (
     <C.Provider value={{ current, playing, full, setFull, play, toggle, next, prev }}>
       {children}
-      <div className={hostCls}><div id="yt-player" /></div>
+      <div className={hostCls} style={hostStyle}><div id="yt-player" /></div>
 
       {current && full && (
-        <div className="fixed inset-0 z-[60] bg-gradient-to-b from-[#0c1a3d] via-black to-black animate-fadeIn flex flex-col px-5 pt-4 pb-8">
-          <button onClick={() => setFull(false)} className="self-start text-white/80 p-1"><Icon n="down" s={30} /></button>
-          <div className="mt-[min(62vw,470px)] md:mt-[min(46vw,470px)]">
-            <h2 className="text-xl font-bold line-clamp-2">{current.title}</h2>
-            <p className="text-white/60">{current.channel}</p>
+        <div className="fixed inset-0 z-[60] bg-[radial-gradient(ellipse_at_top,#0c2a7a_0%,#05060a_55%)] animate-fadeIn flex flex-col px-6 pt-5 pb-6 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <button onClick={() => setFull(false)} className="p-1 text-white/90"><Icon n="down" s={30} /></button>
+            <button onClick={() => openMenu(current)} className="p-1 text-white/90"><Icon n="dots" /></button>
           </div>
-          <div className="mt-4">
-            <input type="range" min={0} max={dur || 1} value={pos} onChange={(e) => seek(+e.target.value)} className="w-full" />
-            <div className="flex justify-between text-xs text-white/50"><span>{fmt(pos)}</span><span>{fmt(dur)}</span></div>
+          <div className="mt-4 flex-1 flex flex-col justify-center items-center min-h-0">
+            {clip ? <div ref={slotRef} className="w-full max-w-[720px] aspect-video" /> : <Cover src={current.thumbnail} size="w-[68vw] max-w-[340px]" className="rounded-2xl shadow-[0_20px_60px_rgba(30,107,255,.35)]" />}
           </div>
-          <div className="flex items-center justify-center gap-7 mt-3">
-            <button onClick={() => toggleFav(current)} className={fav ? 'text-brand-orange' : 'text-white/70'}><Icon n="heart" fill={fav} /></button>
-            <button onClick={prev}><Icon n="prev" s={30} fill /></button>
-            <button onClick={toggle} className="bg-brand-orange text-black rounded-full w-16 h-16 grid place-items-center active:scale-95 transition"><Icon n={playing ? 'pause' : 'play'} s={30} fill /></button>
-            <button onClick={next}><Icon n="next" s={30} fill /></button>
-            <button onClick={() => openAdd(current)} className="text-white/70"><Icon n="plus" /></button>
-          </div>
-          <div className="mt-auto overflow-y-auto no-scrollbar max-h-[22vh]">
-            <p className="text-xs uppercase tracking-wider text-white/40 mb-2">Fila</p>
-            {queue.map((t, i) => (
-              <button key={t.video_id + i} onClick={() => setIndex(i)} className={`flex items-center gap-3 w-full text-left py-1.5 ${i === index ? 'text-brand-orange' : 'text-white/80'}`}>
-                <Cover src={t.thumbnail} size="w-9" className="rounded" /><span className="truncate text-sm">{t.title}</span>
+          <div className="w-full max-w-[720px] mx-auto">
+            <div className="flex items-center gap-3 mt-5">
+              <div className="min-w-0 flex-1"><h2 className="text-2xl font-extrabold truncate">{current.title}</h2><p className="text-white/60 truncate">{current.channel}</p></div>
+              <button onClick={() => toggleFav(current)} className={fav ? 'text-brand-orange' : 'text-white/60'}><Icon n="heart" s={28} fill={fav} /></button>
+            </div>
+            <div className="mt-4">{Slider}<div className="flex justify-between text-xs text-white/50 mt-1"><span>{fmt(pos)}</span><span>{fmt(dur)}</span></div></div>
+            <div className="flex items-center justify-between mt-2 px-1">
+              <button onClick={toggleShuffle} className={shuffle ? 'text-brand-orange' : 'text-white/80'}><Icon n="shuffle" /></button>
+              <button onClick={prev}><Icon n="prev" s={30} fill /></button>
+              <button onClick={toggle} className="bg-white text-black rounded-full w-[72px] h-[72px] grid place-items-center active:scale-95 transition"><Icon n={playing ? 'pause' : 'play'} s={32} fill /></button>
+              <button onClick={next}><Icon n="next" s={30} fill /></button>
+              <button onClick={() => setRepeat(repeat === 'off' ? 'all' : repeat === 'all' ? 'one' : 'off')} className={`relative ${repeat !== 'off' ? 'text-brand-orange' : 'text-white/80'}`}><Icon n="repeat" />{repeat === 'one' && <span className="absolute -top-1 -right-1 text-[10px] font-bold">1</span>}</button>
+            </div>
+            <div className="flex items-center justify-between mt-5">
+              <span className="w-6" />
+              <button onClick={() => setShowQueue(true)} className="text-white/80"><Icon n="queue" /></button>
+            </div>
+            <div className="flex flex-col items-center gap-3 mt-3">
+              {!clip && <div ref={slotRef} className="w-[200px] h-[113px]" />}
+              <button onClick={() => setClip(!clip)} className="w-full border-2 border-brand-orange text-brand-orange rounded-full py-3 font-semibold flex items-center justify-center gap-2 active:scale-[.98] transition">
+                <Icon n={clip ? 'music' : 'play'} s={18} fill={!clip} />{clip ? 'Voltar à capa' : 'Assistir ao clipe'}
               </button>
-            ))}
+            </div>
           </div>
         </div>
       )}
 
+      {showQueue && (
+        <Modal title="Fila" onClose={() => setShowQueue(false)}>
+          {queue.map((t, i) => (
+            <button key={t.video_id + i} onClick={() => { setIndex(i); setShowQueue(false); }} className={`flex items-center gap-3 w-full text-left py-2 ${i === index ? 'text-brand-orange' : ''}`}>
+              <Cover src={t.thumbnail} size="w-10" className="rounded" /><span className="truncate text-sm">{t.title}</span>
+            </button>
+          ))}
+        </Modal>
+      )}
+
       {current && !full && (
-        <div className="fixed z-40 left-0 right-0 bottom-14 md:bottom-0 glass border-t border-white/5 animate-slideUp">
-          <input type="range" min={0} max={dur || 1} value={pos} onChange={(e) => seek(+e.target.value)} className="w-full h-1 block" />
-          <div className="flex items-center gap-3 px-3 py-2 md:px-6 md:py-3">
+        <div className="fixed z-40 left-2 right-2 bottom-[72px] md:left-[17rem] md:right-4 md:bottom-3 rounded-xl bg-surface-2/95 backdrop-blur border border-white/5 overflow-hidden animate-slideUp">
+          <div className="flex items-center gap-3 p-2 pr-4">
             <button onClick={() => setFull(true)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
-              <Cover src={current.thumbnail} size="w-11" className="rounded" />
+              <Cover src={current.thumbnail} size="w-11" className="rounded-lg" />
               <div className="min-w-0"><p className="truncate text-sm font-semibold">{current.title}</p><p className="truncate text-xs text-white/50">{current.channel}</p></div>
             </button>
-            <button onClick={() => toggleFav(current)} className={fav ? 'text-brand-orange' : 'text-white/60'}><Icon n="heart" fill={fav} s={20} /></button>
-            <button onClick={() => setFull(true)} className="text-white/60" title="Ver videoclipe"><Icon n="video" s={20} /></button>
-            <button onClick={prev} className="hidden sm:block"><Icon n="prev" fill /></button>
-            <button onClick={toggle} className="bg-brand-orange text-black rounded-full w-10 h-10 grid place-items-center active:scale-95 transition"><Icon n={playing ? 'pause' : 'play'} fill s={20} /></button>
-            <button onClick={next}><Icon n="next" fill /></button>
+            <button onClick={() => toggleFav(current)} className={fav ? 'text-brand-orange' : 'text-white/50'}><Icon n="heart" fill={fav} s={20} /></button>
+            <button onClick={next} className="hidden sm:block"><Icon n="next" fill /></button>
+            <button onClick={toggle}><Icon n={playing ? 'pause' : 'play'} fill s={26} /></button>
           </div>
+          <div className="h-[3px] bg-white/10"><div className="h-full bg-brand-orange" style={{ width: pct + '%' }} /></div>
         </div>
       )}
     </C.Provider>

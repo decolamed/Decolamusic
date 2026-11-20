@@ -5,7 +5,7 @@ module.exports = {
     extend: {
       colors: {
         brand: { blue: '#1e6bff', blueDark: '#1550c7', orange: '#ff7a1a' },
-        surface: { 0: '#000000', 1: '#0b0b10', 2: '#14141c', 3: '#1d1d28' }
+        surface: { 0: '#000000', 1: '#08090d', 2: '#12131a', 3: '#1c1d27' }
       },
       keyframes: {
         fadeIn: { from: { opacity: 0, transform: 'translateY(6px)' }, to: { opacity: 1, transform: 'none' } },

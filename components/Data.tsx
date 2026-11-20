@@ -13,6 +13,8 @@ type Ctx = {
   addToPlaylist: (pid: string, t: Track) => Promise<void>;
   addTrack: Track | null;
   openAdd: (t: Track | null) => void;
+  menuTrack: Track | null;
+  openMenu: (t: Track | null) => void;
 };
 const C = createContext<Ctx>(null as any);
 export const useData = () => useContext(C);
@@ -21,6 +23,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [favs, setFavs] = useState<Track[]>([]);
   const [addTrack, openAdd] = useState<Track | null>(null);
+  const [menuTrack, openMenu] = useState<Track | null>(null);
 
   const refresh = useCallback(async () => {
     const [pl, pt, fv] = await Promise.all([
@@ -67,5 +70,5 @@ export function DataProvider({ userId, children }: { userId: string; children: R
     await refresh();
   };
 
-  return <C.Provider value={{ userId, playlists, favs, favIds, refresh, toggleFav, createPlaylist, addToPlaylist, addTrack, openAdd }}>{children}</C.Provider>;
+  return <C.Provider value={{ userId, playlists, favs, favIds, refresh, toggleFav, createPlaylist, addToPlaylist, addTrack, openAdd, menuTrack, openMenu }}>{children}</C.Provider>;
 }
