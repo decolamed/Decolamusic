@@ -61,18 +61,12 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       if (est?.quota != null && est.usage != null && est.quota - est.usage < 30e6) throw new Error('Espaço insuficiente no dispositivo.');
       navigator.storage?.persist?.();
       const headers = await authHeader();
-      let jm = key, license = '', duration = t.duration || 0;
-      if (!key.startsWith('jm:')) {
-        const qs = new URLSearchParams({ title: t.title, channel: t.channel, vid: key, duration: String(t.duration || 0) });
-        const m = await (await fetch('/api/offline/match?' + qs, { headers, signal: ac.signal })).json();
-        if (!m.available) {
-          setJob(key, { status: 'error', msg: m.reason === 'not_configured' ? 'Download offline ainda não configurado.' : 'Esta música não está disponível para download offline.' });
-          return;
-        }
-        jm = 'jm:' + m.id; license = m.license; duration = m.duration;
-      }
+      const jm = key, license = '', duration = t.duration || 0;
+      if (!key.startsWith('jm:')) { setJob(key, { status: 'error', msg: 'Esta música não está disponível para download offline.' }); return; }
       setJob(key, { status: 'downloading', progress: 0 });
       const r = await fetch('/api/offline/file?id=' + jm, { headers, signal: ac.signal });
+      if (r.status === 403) { setJob(key, { status: 'error', msg: 'Esta música não está disponível para download offline.' }); return; }
+      if (r.status === 503) { setJob(key, { status: 'error', msg: 'Download offline ainda não configurado.' }); return; }
       if (!r.ok || !r.body) throw new Error((await r.json().catch(() => ({}))).error || 'Falha no download.');
       const total = +(r.headers.get('content-length') || 0);
       const reader = r.body.getReader();

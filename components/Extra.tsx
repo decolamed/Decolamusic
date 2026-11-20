@@ -29,7 +29,7 @@ export function DownloadsView({ go }: { go: (v: any) => void }) {
           {j.status === 'error' ? <p className="text-sm text-red-400 mt-1">{j.msg}</p> : (
             <>
               <div className="h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden"><div className={`h-full bg-brand-orange ${j.progress < 0 || j.status === 'matching' ? 'w-1/3 animate-pulse' : ''}`} style={j.progress >= 0 && j.status === 'downloading' ? { width: j.progress * 100 + '%' } : undefined} /></div>
-              <p className="text-xs text-white/50 mt-1">{j.status === 'matching' ? 'Procurando gravação autorizada…' : j.progress >= 0 ? `Baixando ${Math.round(j.progress * 100)}%` : 'Baixando…'}</p>
+              <p className="text-xs text-white/50 mt-1">{j.status === 'matching' ? 'Verificando autorização…' : j.progress >= 0 ? `Baixando ${Math.round(j.progress * 100)}%` : 'Baixando…'}</p>
             </>
           )}
         </div>

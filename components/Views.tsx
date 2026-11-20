@@ -46,13 +46,13 @@ function Head({ title, more }: { title: string; more?: () => void }) {
 }
 
 const TILES = [
-  { n: 'Trap BR', q: 'trap br', g: 'from-blue-700 to-indigo-950' },
-  { n: 'Indie Hits', q: 'indie hits', g: 'from-pink-600 to-rose-950' },
-  { n: 'Brasil Hits', q: 'hits brasil', g: 'from-amber-500 to-orange-900' },
+  { n: 'Trap BR', q: 'trap', g: 'from-blue-700 to-indigo-950' },
+  { n: 'Indie Hits', q: 'indie', g: 'from-pink-600 to-rose-950' },
+  { n: 'Brasil Hits', q: 'brasil', g: 'from-amber-500 to-orange-900' },
   { n: 'Sertanejo', q: 'sertanejo', g: 'from-emerald-600 to-teal-950' },
-  { n: 'Funk', q: 'funk hits', g: 'from-fuchsia-600 to-purple-950' },
-  { n: 'Pop', q: 'pop hits', g: 'from-sky-500 to-blue-950' },
-  { n: 'Rock', q: 'rock classics', g: 'from-red-600 to-red-950' },
+  { n: 'Funk', q: 'funk', g: 'from-fuchsia-600 to-purple-950' },
+  { n: 'Pop', q: 'pop', g: 'from-sky-500 to-blue-950' },
+  { n: 'Rock', q: 'rock', g: 'from-red-600 to-red-950' },
   { n: 'Lo-fi', q: 'lofi', g: 'from-violet-600 to-slate-900' }
 ];
 
@@ -81,7 +81,7 @@ export function Home({ go, name }: { go: Nav; name: string }) {
         <div className="absolute -right-10 -top-10 w-48 h-48 rounded-full bg-brand-orange/70 blur-2xl" />
         <p className="relative text-2xl font-extrabold leading-tight">Descubra<br />novos sons</p>
         <p className="relative text-xs text-white/70 mt-1 max-w-[60%]">Explore playlists feitas para você</p>
-        <button onClick={() => go({ name: 'search', q: 'hits brasil' })} className="absolute right-4 bottom-4 w-12 h-12 rounded-full bg-brand-orange text-black grid place-items-center active:scale-95 transition"><Icon n="play" fill s={22} /></button>
+        <button onClick={() => go({ name: 'search', q: 'brasil' })} className="absolute right-4 bottom-4 w-12 h-12 rounded-full bg-brand-orange text-black grid place-items-center active:scale-95 transition"><Icon n="play" fill s={22} /></button>
       </div>
       {recent.length > 0 && (<>
         <Head title="Tocadas recentemente" more={() => go({ name: 'history' })} />
@@ -122,29 +122,21 @@ export function Home({ go, name }: { go: Nav; name: string }) {
   );
 }
 
-const FILTERS = [
-  { k: 'tudo', l: 'Tudo', s: '' },
-  { k: 'musicas', l: 'Músicas', s: ' música' },
-  { k: 'artistas', l: 'Artistas', s: ' artista oficial' },
-  { k: 'albuns', l: 'Álbuns', s: ' álbum completo' }
-];
-
 export function Search({ initial }: { initial?: string }) {
   const [q, setQ] = useState(initial || '');
-  const [f, setF] = useState(FILTERS[0]);
-  const [src, setSrc] = useState<'yt' | 'jm'>('yt');
   const [items, setItems] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-  const run = async (term: string, flt = f) => {
+  const run = async (term: string) => {
     if (!term.trim()) return;
     setLoading(true); setErr('');
     const { data } = await supabase.auth.getSession();
-    const r = await fetch((src === 'jm' ? '/api/jamendo/search?q=' : '/api/search?q=') + encodeURIComponent(term + (src === 'yt' ? flt.s : '')), { headers: { Authorization: `Bearer ${data.session?.access_token}` } });
-    const j = await r.json();
+    try {
+      const r = await fetch('/api/jamendo/search?q=' + encodeURIComponent(term), { headers: { Authorization: `Bearer ${data.session?.access_token}` } });
+      const j = await r.json();
+      if (!r.ok) setErr(j.error || 'Erro na pesquisa'); else { setItems(j.items); if (!j.items.length) setErr('Nada encontrado.'); }
+    } catch { setErr('Sem conexão. Tente novamente.'); }
     setLoading(false);
-    if (!r.ok) { setErr(j.error || 'Erro na pesquisa'); return; }
-    setItems(j.items);
   };
   useEffect(() => { if (initial) run(initial); }, []); // eslint-disable-line
   return (
@@ -153,23 +145,15 @@ export function Search({ initial }: { initial?: string }) {
         <Icon n="search" s={20} className="text-white/60" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar no Decola Music..." className="flex-1 bg-transparent outline-none placeholder:text-white/40" />
       </form>
-      <div className="flex gap-2 mt-4">
-        {([['yt', 'YouTube'], ['jm', 'Catálogo livre']] as const).map(([k, l]) => <button key={k} onClick={() => { setSrc(k); setItems([]); setErr(''); }} className={`px-4 py-1.5 rounded-full text-sm font-semibold border ${src === k ? 'border-brand-orange text-brand-orange' : 'border-white/15 text-white/60'}`}>{l}</button>)}
-      </div>
-      {src === 'jm' && <p className="text-xs text-white/40 mt-2">Música independente com licença aberta (Jamendo): toca com a tela apagada e pode ser baixada quando o artista autoriza.</p>}
-      <div className="flex gap-2 my-4 overflow-x-auto no-scrollbar">
-        {src === 'yt' && FILTERS.map((x) => (
-          <button key={x.k} onClick={() => { setF(x); if (q.trim()) run(q, x); }} className={`px-5 py-1.5 rounded-full text-sm font-semibold shrink-0 ${f.k === x.k ? 'bg-brand-orange text-black' : 'bg-surface-3 text-white/80'}`}>{x.l}</button>
-        ))}
-      </div>
-      {!items.length && !loading && !err && src === 'yt' && (
+      <p className="text-xs text-white/40 mt-3 mb-4">Música independente com licença aberta (Jamendo). Toca com a tela apagada.</p>
+      {!items.length && !loading && !err && (
         <div className="grid grid-cols-2 gap-3">
           {TILES.map((t) => <button key={t.n} onClick={() => { setQ(t.q); run(t.q); }} className={`rounded-xl p-4 h-20 text-left font-bold bg-gradient-to-br ${t.g}`}>{t.n}</button>)}
         </div>
       )}
       {items.length > 0 && <h2 className="font-bold mb-2">Resultados</h2>}
       {loading && <p className="text-white/50 animate-pulse">Buscando…</p>}
-      {err && <p className="text-red-400">{err}</p>}
+      {err && <p className="text-brand-orange">{err}</p>}
       {items.map((t, i) => <TrackRow key={t.video_id} t={t} queue={items} i={i} />)}
     </div>
   );
@@ -326,7 +310,7 @@ export function Profile({ email, name, userId, onName, go }: { email: string; na
       <button onClick={() => go({ name: 'downloads' })} className="flex items-center gap-4 w-full py-5 text-left"><Icon n="down" className="text-white/70" /><span className="flex-1">Downloads</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => setAbout(true)} className="flex items-center gap-4 w-full py-5 text-left"><Icon n="info" className="text-white/70" /><span className="flex-1">Sobre o Decola Music</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => supabase.auth.signOut()} className="w-full py-3.5 rounded-full bg-surface-3 font-semibold mt-2">Sair</button>
-      {about && <Modal title="Decola Music" onClose={() => setAbout(false)}><p className="text-white/70 text-sm">Seu player pessoal: músicas do YouTube, playlists e favoritos salvos na sua conta.</p></Modal>}
+      {about && <Modal title="Decola Music" onClose={() => setAbout(false)}><p className="text-white/70 text-sm">Seu player pessoal: música livre do Jamendo, playlists e favoritos salvos na sua conta.</p></Modal>}
     </div>
   );
 }

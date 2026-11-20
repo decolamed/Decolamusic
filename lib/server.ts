@@ -22,16 +22,3 @@ export async function jamendoTracks(params: Record<string, string>) {
   const j = await r.json();
   return (j.results || []) as any[];
 }
-
-export const norm = (s: string) =>
-  (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-
-export function parseYouTubeTitle(title: string, channel: string) {
-  const clean = title
-    .replace(/[\(\[][^\)\]]*[\)\]]/g, ' ')
-    .replace(/\b(official|oficial|video|vídeo|clipe|clip|lyrics?|letra|audio|áudio|ao vivo|hd|4k)\b/gi, ' ')
-    .replace(/\s+/g, ' ').trim();
-  const parts = clean.split(/\s[-–—]\s/);
-  const ch = channel.replace(/\s*-\s*topic$/i, '').replace(/vevo$/i, '').trim();
-  return parts.length >= 2 ? { artist: parts[0].trim(), song: parts.slice(1).join(' ').trim() } : { artist: ch, song: clean };
-}
