@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Icon, Modal, Logo, LogoMark, btnAccent, btnPrimary, inputCls } from './Ui';
 import { DataProvider, useData } from './Data';
 import { OfflineProvider, useOffline } from './Offline';
-import { DownloadsView, SpotifyView } from './Extra';
+import { DownloadsView } from './Extra';
 import { PlayerProvider } from './Player';
 import { Home, Search, Library, PlaylistView, Favorites, History, Profile, View } from './Views';
 
@@ -98,12 +98,12 @@ function TrackMenu() {
 }
 
 function Shell({ session }: { session: Session }) {
-  const [view, setView] = useState<View>(() => (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('code') ? { name: 'spotify' } : { name: 'home' }));
+  const [view, setView] = useState<View>(() => ({ name: 'home' }));
   const [name, setName] = useState((session.user.user_metadata?.display_name as string) || session.user.email!.split('@')[0]);
   useEffect(() => {
     supabase.from('profiles').select('display_name').eq('id', session.user.id).single().then(({ data }) => data?.display_name && setName(data.display_name));
   }, [session.user.id]);
-  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' || view.name === 'downloads' || view.name === 'spotify' ? 'library' : view.name;
+  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' || view.name === 'downloads' ? 'library' : view.name;
   return (
     <DataProvider userId={session.user.id}>
       <OfflineProvider>
@@ -124,7 +124,6 @@ function Shell({ session }: { session: Session }) {
           {view.name === 'favorites' && <Favorites go={setView} />}
           {view.name === 'history' && <History go={setView} />}
           {view.name === 'downloads' && <DownloadsView go={setView} />}
-          {view.name === 'spotify' && <SpotifyView go={setView} />}
           {view.name === 'profile' && <Profile email={session.user.email!} name={name} userId={session.user.id} onName={setName} go={setView} />}
         </main>
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 glass border-t border-white/5 flex">
