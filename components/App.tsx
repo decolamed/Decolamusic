@@ -4,8 +4,6 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Icon, Modal, Logo, LogoMark, btnAccent, btnPrimary, inputCls } from './Ui';
 import { DataProvider, useData } from './Data';
-import { OfflineProvider, useOffline } from './Offline';
-import { DownloadsView } from './Extra';
 import { PlayerProvider } from './Player';
 import { Home, Search, Library, PlaylistView, Favorites, History, Profile, View } from './Views';
 
@@ -79,34 +77,25 @@ function AddToPlaylist() {
 
 function TrackMenu() {
   const { menuTrack, openMenu, favIds, toggleFav, openAdd } = useData();
-  const { local, jobs, start, remove, online } = useOffline();
   if (!menuTrack) return null;
-  const key = menuTrack.video_id;
-  const busy = jobs[key] && (jobs[key].status === 'matching' || jobs[key].status === 'downloading');
   const fav = favIds.has(menuTrack.video_id);
   return (
     <Modal title={menuTrack.title.length > 40 ? menuTrack.title.slice(0, 40) + '…' : menuTrack.title} onClose={() => openMenu(null)}>
       <button onClick={() => { toggleFav(menuTrack); openMenu(null); }} className="flex items-center gap-4 w-full py-3 text-left"><Icon n="heart" fill={fav} className={fav ? 'text-brand-orange' : ''} />{fav ? 'Remover das favoritas' : 'Adicionar às favoritas'}</button>
       <button onClick={() => { const t = menuTrack; openMenu(null); openAdd(t); }} className="flex items-center gap-4 w-full py-3 text-left"><Icon n="plus" />Adicionar à playlist</button>
-      {local[key] ? (
-        <button onClick={() => { remove(key); openMenu(null); }} className="flex items-center gap-4 w-full py-3 text-left"><Icon n="trash" />Remover download</button>
-      ) : (
-        <button disabled={busy || !online} onClick={() => { start(menuTrack); openMenu(null); }} className="flex items-center gap-4 w-full py-3 text-left disabled:opacity-40"><Icon n="down" />{busy ? 'Baixando…' : 'Baixar para ouvir offline'}</button>
-      )}
     </Modal>
   );
 }
 
 function Shell({ session }: { session: Session }) {
-  const [view, setView] = useState<View>(() => ({ name: 'home' }));
+  const [view, setView] = useState<View>({ name: 'home' });
   const [name, setName] = useState((session.user.user_metadata?.display_name as string) || session.user.email!.split('@')[0]);
   useEffect(() => {
     supabase.from('profiles').select('display_name').eq('id', session.user.id).single().then(({ data }) => data?.display_name && setName(data.display_name));
   }, [session.user.id]);
-  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' || view.name === 'downloads' ? 'library' : view.name;
+  const active = view.name === 'playlist' || view.name === 'favorites' || view.name === 'history' ? 'library' : view.name;
   return (
     <DataProvider userId={session.user.id}>
-      <OfflineProvider>
       <PlayerProvider>
         <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-60 flex-col gap-1 p-5 bg-surface-1 border-r border-white/5">
           <div className="mb-6"><Logo /></div>
@@ -123,8 +112,7 @@ function Shell({ session }: { session: Session }) {
           {view.name === 'playlist' && <PlaylistView id={view.id} go={setView} />}
           {view.name === 'favorites' && <Favorites go={setView} />}
           {view.name === 'history' && <History go={setView} />}
-          {view.name === 'downloads' && <DownloadsView go={setView} />}
-          {view.name === 'profile' && <Profile email={session.user.email!} name={name} userId={session.user.id} onName={setName} go={setView} />}
+          {view.name === 'profile' && <Profile email={session.user.email!} name={name} userId={session.user.id} onName={setName} />}
         </main>
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 glass border-t border-white/5 flex">
           {NAV.map((n) => (
@@ -136,7 +124,6 @@ function Shell({ session }: { session: Session }) {
         <AddToPlaylist />
         <TrackMenu />
       </PlayerProvider>
-      </OfflineProvider>
     </DataProvider>
   );
 }
