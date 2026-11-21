@@ -19,6 +19,7 @@ const P: Record<string, string> = {
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   shuffle: 'M3 7h4l10 10h4M3 17h4l3-3M14 10l3-3h4M18 4l3 3-3 3M18 14l3 3-3 3',
   x: 'M6 6l12 12M18 6L6 18',
+  devices: 'M3 5h13v10H3zM8 19h4M10 15v4M19 8h-1v11h3V8zM20 17v.01',
   bell: 'M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7zM10 20a2 2 0 0 0 4 0',
   dots: 'M12 5h.01M12 12h.01M12 19h.01',
   repeat: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',

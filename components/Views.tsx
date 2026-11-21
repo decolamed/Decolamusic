@@ -6,7 +6,7 @@ import { useData } from './Data';
 import { usePlayer } from './Player';
 
 export type View =
-  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' | 'mymusic' }
+  | { name: 'home' | 'library' | 'favorites' | 'history' | 'profile' | 'mymusic' | 'devices' }
   | { name: 'search'; q?: string }
   | { name: 'playlist'; id: string };
 type Nav = (v: View) => void;
@@ -204,6 +204,7 @@ export function Library({ go }: { go: Nav }) {
       </Row>
       {playlists.map((p) => <Row key={p.id} onClick={() => go({ name: 'playlist', id: p.id })} cover={p.cover} title={p.name} sub={`${p.count} músicas`} />)}
       <Row onClick={() => go({ name: 'mymusic' })} title="Minhas músicas" sub="Arquivos do aparelho • tocam em segundo plano"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="music" /></div></Row>
+      <Row onClick={() => go({ name: 'devices' })} title="Dispositivos" sub="Controle a música de outro aparelho"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="devices" /></div></Row>
       <Row onClick={() => setOpen(true)} title="Criar playlist"><div className="w-14 h-14 rounded-lg bg-surface-3 grid place-items-center"><Icon n="plus" /></div></Row>
       {hist.length > 0 && (<>
         <Head title="Histórico" more={() => go({ name: 'history' })} />
@@ -314,6 +315,7 @@ export function Profile({ email, name, userId, onName }: { email: string; name: 
         </div>
         {!editing && <button onClick={() => { setN(name); setEditing(true); }} className="text-white/70"><Icon n="edit" /></button>}
       </div>
+      <button onClick={() => go({ name: 'devices' })} className="flex items-center gap-4 w-full py-5 text-left border-b border-white/10"><Icon n="devices" className="text-white/70" /><span className="flex-1">Dispositivos</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => setAbout(true)} className="flex items-center gap-4 w-full py-5 text-left"><Icon n="info" className="text-white/70" /><span className="flex-1">Sobre o Decola Music</span><Icon n="chev" s={18} className="text-white/50" /></button>
       <button onClick={() => supabase.auth.signOut()} className="w-full py-3.5 rounded-full bg-surface-3 font-semibold mt-2">Sair</button>
       {about && <Modal title="Decola Music" onClose={() => setAbout(false)}><p className="text-white/70 text-sm">Seu player pessoal: músicas do YouTube, playlists e favoritos salvos na sua conta.</p></Modal>}
